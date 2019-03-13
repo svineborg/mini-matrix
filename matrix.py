@@ -1,14 +1,16 @@
 # /usr/bin/env python3
 
-import shutil, sys, time
-from random import choice, randrange, paretovariate
+# inspired by Joao S.O. 
+# https://github.com/jsbueno/terminal_matrix
+
+import shutil
+from random import randrange
 
 # print Command Sequence
 prcs = lambda command: print("\x1b[",command, sep="", end="")
 getchars = lambda start, end: [chr(i) for i in range(start,end)]
 
-#original is mirrored half-width katakana, unavailable in UTF-8
-# so, next best thing is full-width
+# using half-width katakana like the original
 
 katakana = getchars(0xFF66,0xFF9D)
 latin = getchars(0x0030,0x0039)
@@ -21,18 +23,21 @@ def clear_screen():
 def init():
 	global rows, cols
 	rows, cols = shutil.get_terminal_size()
+	cols = cols * 2 # halfwidth chars so double the columns
 	clear_screen()
 	prcs("?25l") # hide cursor
 
-def print_at(x, y, char):
-	prcs("%d;%df" % (y,x) + char) # line, column, character to print
+def print_at(x, y,color,brightness,char):
+	prcs("%d;%df" % (y,x)) # location
+	prcs("%d;%dm" % (color, brightness)) #formatting
+	print(char,end="",sep="") # actual print
 
 def gen_col():
 	return [chars[randrange(1,len(chars))] for i in range(0,rows)]
 
 def print_col(col,x):
 	for i in range(1,len(col)):
-		print_at(x * 2, i, col[i]) #half-width chars need double spacing for fullscreen
+		print_at(x * 2 - 1, i, 32, randrange(1,2), col[i]) #start at 1 but add buffer column between
 
 def print_screen():
 	for i in range(1,cols):
@@ -45,10 +50,16 @@ def end():
 	prcs("?25h") # unhide cursor
 	print("printed %d rows and %d cols\n" % (rows, cols))
 
-if __name__ == "__main__":
+def main():
+	while True:
+		print_screen()
+
+def run():
 	init()
+	main()
+
+if __name__ == "__main__":
 	try:
-		while(True):
-			print_screen()
+		run()
 	except KeyboardInterrupt:
 		end()
