@@ -1,124 +1,131 @@
-# /usr/bin/env python3
-
+'''terminal visualizer a la The Matrix, with customization options'''
+#! /usr/bin/env python3
 # inspired by Joao S.O @ https://github.com/jsbueno/terminal_matrix
 
-import shutil, time, sys
-from random import randrange, choice, paretovariate
+import shutil, time, sys, argparse
+from random import randrange, choice
 
-# global variables
-MAX_SPEED = 10 
-FRAMES_PER_SECOND = 33
-MAX_BLOBS = 250 
-
-# print Command Sequence
+# print Command Sequence Initiator
 prcs = lambda command: print("\x1b[",command, sep="", end="")
 getchars = lambda start, end: [chr(i) for i in range(start,end)]
 
-# using half-width katakana + latin numerals
-chars =  getchars(0xFF66,0xFF9D) + getchars(0x0030,0x0039)
+FPS = 20 
+MAX_BLOBS = 150
+MAX_SPEED = 9 
+RAINBOW = False
 
-def clear_screen():
+def colors(position=1):
+	# black,red,green,yellow,blue,magenta,cyan,white
+	colors = [30,31,32,33,34,35,36,37]
+	color = 0 
+	if RAINBOW == True:
+		color = choice(colors)
+	elif position == 1:
+		color = 37
+	else:
+		color = 32
+	return color
+
+def end():
+	prcs("m") # reset attributes
 	prcs("2J") # clear screen
-	print("\n") # align cursor to (1,1)
+	prcs("?25h") #unhide cursor
+	print("printed %d rows and %d cols\n" % (ROWS, COLS))
 
-def init():
-	global rows, cols
-	cols, rows = shutil.get_terminal_size()
-	cols += 1
-	rows += 1
-	clear_screen()
-	prcs("?25l") # hide cursor
-
-def print_at(char,x,y,bright=0,color=0):
+def print_at(char,x,y,color=colors()):
 	prcs("%d;%df" % (y,x)) # location
-	#bright: 0, 1 = normal, bold
-	prcs("%d;%dm" % (bright,color)) # formatting
+	prcs("%dm" % (color)) # formatting
 	print(char,end="",flush=True) # actual print
 
-def step_column(speed, tick, y):
+def step_col(speed, tick, y):
 	tick += 1
 	if tick >= speed:
 		y += 1
 		tick = 0
 	return tick, y
 
-def gen_col(x):
-	white = 37
-	green = 32
-	normal = 0
-	bold = 1
-	faded = 2
-	speed = randrange(1,MAX_SPEED)
-	espeed = randrange(1,MAX_SPEED)
-	y = counter = ecounter = 0
-	oldline = eline = -1
-	erasing = False
-	length =  paretovariate(rows) * rows
+def generate_col(x):
+	length = randrange(2,ROWS)
+	speed = randrange(MAX_SPEED)
+	espeed = randrange(MAX_SPEED)
+	ticker = eticker = 0
+	y = randrange(ROWS - length) + 1
+	old_y = y - 1
+	e_y =min(0, y - length)
 	while True:
-		counter, y = step_column(speed, counter,y)
-		if y < length:
-			print_at(choice(chars),x,y,bold,white)
-			print_at(choice(chars),x,y-1,bold,green)
-			print_at(choice(chars),x,y-2,normal,green)
-			print_at(choice(chars),x,y - (length//4),faded,green)
-		if eline <= length:
-			print_at(" ",x,eline)
-			ecounter, eline = step_column(espeed, ecounter, eline)
-		yield None
-		eline = x - length
-		oldline = y
-		if y >= length:
-			print_at(" ",x, y)
+		ticker, y = step_col(speed, ticker, y)
+		eticker, e_y = step_col(espeed, eticker, e_y)
+		if 1 <= y and y <= ROWS:
+			print_at(choice(CHARS),x,y,colors(1))
+			print_at(choice(CHARS),x,old_y,colors(2))
+		if 1 <= e_y and e_y <= ROWS:
+			print_at(" ",x,e_y)
+		if e_y > ROWS or e_y == y:
+			print_at(" ",x,e_y)
 			break
+		old_y = y
+		yield None
 
-def iterate(cascading):
+def iterate(screen):
 	stopped = set()
-	for c in cascading:
+	for blob in screen:
 		try:
-			next(c)
+			next(blob)
 		except StopIteration:
-			stopped.add(c)
+			stopped.add(blob)
 	return stopped
 
-def add_new(cascading):
-	if randrange(MAX_BLOBS + 1) > len(cascading) :
-		x = randrange(cols)
-		for i in range(randrange(MAX_BLOBS)) : 
-			cascading.add(gen_col((x + i) % cols))
+def add_blobs(screen):
+	if len(screen) < MAX_BLOBS:
+		for i in range(MAX_BLOBS - len(screen)):
+			screen.add(generate_col(randrange(COLS)))
 		return True
 	return False
 
 def main():
-	cascading = set()
+	parser = argparse.ArgumentParser(description='terminal visualizer a la The Matrix')
+	parser.add_argument("-c","--characters", \
+		help="select the character set: choices are Hiragana, \
+		Cyrillic, Latin, Greek, and Math",action='append')
+	parser.add_argument("-r","--rainbow", help="turn on rainbow mode",action="store_true")
+	args = parser.parse_args()
+	
+	chars = ""
+	if args.characters:
+		chars = args.characters[0] 
+	global CHARS
+	if chars.upper() == "CYRILLIC":
+		CHARS = getchars(0x0400,0x051D)
+	elif chars.upper() == "LATIN":
+		CHARS = getchars(0x0041,0x005B)
+	elif chars.upper()== "GREEK":
+		CHARS = getchars(0x038E,0x03FF)
+	elif chars.upper()== "MATH":
+		CHARS = getchars(0x2200,0x22FF)
+	elif chars.upper()== "HIRAGANA":
+		CHARS = getchars(0x3047,0x3093)
+	else:
+		CHARS = getchars(0x30A1,0x30F6)
+	CHARS += getchars(0x0030,0x0039)
+	global ROWS, COLS, RAINBOW
+	if args.rainbow:
+		RAINBOW = args.rainbow
+	COLS, ROWS = shutil.get_terminal_size()
+	MAX_BLOBS = COLS - (COLS//4)
+	prcs("?25l") # hide cursor
+	prcs("2J") # clear screen
+	print("\n",sep="",end="") # align to (1,1)
+	screen = set()
 	while True:
-		while add_new(cascading): pass
-		stopped = iterate(cascading)
+		while add_blobs(screen): pass
+		stopped = iterate(screen)
 		sys.stdout.flush()
-		cascading.difference_update(stopped)
-		time.sleep(1/FRAMES_PER_SECOND)
-
-def end():
-	prcs("m") # reset attributes
-	clear_screen()
-	prcs("?25h") # unhide cursor
-	print("printed %d rows and %d cols\n" % (rows, cols))
-
-def test(test_name):
-	if test_name == "printing":
-		for x in range(1,cols):
-			for y in range(1,rows):
-				print_at(chars[1],x,y)
-		print("done testing printing")
-	if test_name == "cascade":
-		print("done testing cascade")
+		screen.difference_update(stopped)
+		time.sleep(1/FPS)
+	end()
 
 if __name__ == "__main__":
 	try:
-		init()
-		if len(sys.argv) > 1:
-			test(sys.argv[1])
-		else:
-			main()
-		end()
+		main()
 	except KeyboardInterrupt:
 		end()
